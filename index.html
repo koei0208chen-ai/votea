@@ -9,11 +9,9 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- 移除了造成錯誤的 @lucide/lab，保留標準的 lucide 庫 -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; }
+        body { font-family: 'Noto Sans TC', sans-serif; margin: 0; padding: 0; }
         .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
         .animate-zoom-in { animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -24,7 +22,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo } = React;
 
         // ==========================================
         // --- 核心設定區 (請在此修改您的 Google 表單資訊) ---
@@ -34,6 +32,33 @@
             ENTRY_ID_CLASS: "entry.111111111",
             ENTRY_ID_WORKS: "entry.222222222",
             GOOGLE_RESULTS_URL: "https://docs.google.com/spreadsheets/d/e/你的發佈ID/pubhtml?widget=true&headers=false"
+        };
+
+        // 安全的內嵌圖示組件 (解決 NotFoundError 與崩潰問題)
+        const Icon = ({ name, className = "w-6 h-6" }) => {
+            const icons = {
+                image: <path d="M21 19V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2zM3 16l5-5 3 3 5-5 5 5" />,
+                plus: <path d="M12 5v14M5 12h14" />,
+                check: <path d="M20 6L9 17l-5-5" />,
+                lock: <path d="M19 11H5a2 2 0 00-2 2v7a2 2 0 002 2h14a2 2 0 002-2v-7a2 2 0 00-2-2zM7 11V7a5 5 0 0110 0v4" />,
+                "zoom-in": <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></g>,
+                "image-off": <path d="M21 21l-18-18m6.67 0H19a2 2 0 012 2v9.33M3 9v10a2 2 0 002 2h10m1 1l2 2m-6-6l4 4" />,
+                x: <path d="M18 6L6 18M6 6l12 12" />
+            };
+
+            return (
+                <svg 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className={className}
+                >
+                    {icons[name] || null}
+                </svg>
+            );
         };
 
         // 自動生成 701-709 班級資料
@@ -58,7 +83,7 @@
             return data;
         };
 
-        const classData = generateClassData();
+        const CLASS_DATA = generateClassData();
 
         function App() {
             const [activeTab, setActiveTab] = useState('vote');
@@ -67,16 +92,15 @@
             const [isVerified, setIsVerified] = useState(false);
             const [selectedWorks, setSelectedWorks] = useState([]);
             const [hasVoted, setHasVoted] = useState(false);
-            const [debugInfo, setDebugInfo] = useState({}); // 紀錄失效圖片的網址
-            const [selectedImg, setSelectedImg] = useState(null); // 控制放大預覽的狀態
+            const [debugInfo, setDebugInfo] = useState({});
+            const [selectedImg, setSelectedImg] = useState(null);
 
             useEffect(() => {
                 const voted = localStorage.getItem('hasVotedImageVote');
                 if (voted) setHasVoted(true);
-                // 初始化 Lucide 圖示
-                if (window.lucide) window.lucide.createIcons();
-            }, [activeTab, isVerified, selectedImg]);
+            }, []);
 
+            // 當班級改變時，重置驗證狀態與選擇，確保畫面乾淨
             useEffect(() => {
                 setIsVerified(false);
                 setPasswordInput("");
@@ -85,15 +109,15 @@
             }, [userClass]);
 
             const handleVerify = () => {
-                if (userClass && classData[userClass].password === passwordInput) {
+                if (userClass && CLASS_DATA[userClass] && passwordInput === CLASS_DATA[userClass].password) {
                     setIsVerified(true);
                 } else {
-                    alert("驗證失敗：密碼錯誤！");
+                    alert("驗證失敗：密碼不正確！");
                 }
             };
 
             const toggleWork = (e, name) => {
-                e.stopPropagation(); // 防止觸發圖片放大
+                e.stopPropagation();
                 if (selectedWorks.includes(name)) {
                     setSelectedWorks(selectedWorks.filter(w => w !== name));
                 } else if (selectedWorks.length < 2) {
@@ -111,7 +135,6 @@
                 window.open(url, '_blank');
             };
 
-            // 核心偵錯邏輯：自動切換格式並記錄失敗網址
             const onImgError = (e, imgId) => {
                 const currentSrc = e.target.src;
                 if (currentSrc.toLowerCase().endsWith('.png')) {
@@ -119,18 +142,21 @@
                 } else if (currentSrc.toLowerCase().endsWith('.jpg')) {
                     e.target.src = currentSrc.replace('.jpg', '.jpeg');
                 } else {
-                    // 如果所有格式都失敗
                     setDebugInfo(prev => ({...prev, [imgId]: currentSrc}));
                     e.target.style.display = 'none';
                 }
             };
+
+            const currentImages = useMemo(() => {
+                return isVerified && userClass && CLASS_DATA[userClass] ? CLASS_DATA[userClass].images : [];
+            }, [isVerified, userClass]);
 
             return (
                 <div className="min-h-screen flex flex-col">
                     {/* Header */}
                     <header className="bg-white border-b p-4 sticky top-0 z-30 flex justify-between items-center shadow-sm">
                         <div className="flex items-center gap-2 text-indigo-600">
-                            <i data-lucide="image" className="w-6 h-6 font-bold"></i>
+                            <Icon name="image" className="w-6 h-6 stroke-[3px]" />
                             <span className="font-black text-xl tracking-tight hidden sm:inline text-slate-800">校園作品投票系統</span>
                         </div>
                         <nav className="flex bg-slate-100 p-1 rounded-xl">
@@ -148,10 +174,10 @@
                                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">1. 選擇班級</label>
                                         <select value={userClass} onChange={e => setUserClass(e.target.value)} className="w-full border-2 border-slate-100 p-4 rounded-2xl bg-slate-50 font-bold outline-none focus:border-indigo-500 transition-all cursor-pointer">
                                             <option value="">請點選班級...</option>
-                                            {Object.keys(classData).map(c => <option key={c} value={c}>{c} 班</option>)}
+                                            {Object.keys(CLASS_DATA).map(c => <option key={c} value={c}>{c} 班</option>)}
                                         </select>
                                     </div>
-                                    <div className={`space-y-2 ${!userClass ? 'opacity-20 pointer-events-none' : ''}`}>
+                                    <div className={`space-y-2 ${!userClass ? 'opacity-20 pointer-events-none' : 'opacity-100'}`}>
                                         <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">2. 班級密碼</label>
                                         <div className="flex gap-2">
                                             <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleVerify()} placeholder="輸入 p+班級" className="flex-1 border-2 border-slate-100 p-4 rounded-2xl bg-slate-50 outline-none focus:border-indigo-500 transition-all font-bold" disabled={isVerified} />
@@ -170,7 +196,7 @@
                                 {/* 第二步：作品呈現 */}
                                 {isVerified ? (
                                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 pb-20 animate-fade-in">
-                                        {classData[userClass].images.map(img => {
+                                        {currentImages.map(img => {
                                             const isSelected = selectedWorks.includes(img.name);
                                             const errorUrl = debugInfo[img.id];
                                             return (
@@ -184,14 +210,14 @@
                                                             className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" 
                                                             onError={e => onImgError(e, img.id)} 
                                                         />
-                                                        {/* 放大圖示提示 */}
-                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                                            <i data-lucide="zoom-in" className="text-white opacity-0 group-hover:opacity-100 transition-opacity w-10 h-10"></i>
+                                                        {/* 放大提示 */}
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center pointer-events-none">
+                                                            <Icon name="zoom-in" className="text-white opacity-0 group-hover:opacity-100 transition-opacity w-10 h-10" />
                                                         </div>
-                                                        {/* 偵錯模式區塊 */}
+                                                        {/* 偵錯模式 */}
                                                         {errorUrl && (
                                                             <div className="absolute inset-0 p-4 flex flex-col items-center justify-center text-center bg-red-50/90 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
-                                                                <i data-lucide="image-off" className="text-red-300 mb-1 w-8 h-8"></i>
+                                                                <Icon name="image-off" className="text-red-300 mb-1 w-8 h-8" />
                                                                 <p className="text-[10px] font-black text-red-500 leading-tight mb-2">無法讀取圖片</p>
                                                                 <button 
                                                                     onClick={() => window.open(errorUrl)} 
@@ -201,12 +227,12 @@
                                                                 </button>
                                                             </div>
                                                         )}
-                                                        {/* 選取勾選按鈕 */}
+                                                        {/* 選取按鈕 */}
                                                         <button 
                                                             onClick={(e) => toggleWork(e, img.name)} 
                                                             className={`absolute top-3 right-3 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg transition-all transform z-10 ${isSelected ? 'bg-indigo-600 text-white' : 'bg-white/90 text-slate-300 hover:text-indigo-600'}`}
                                                         >
-                                                            {isSelected ? <i data-lucide="check" className="w-6 h-6"></i> : <i data-lucide="plus" className="w-5 h-5"></i>}
+                                                            {isSelected ? <Icon name="check" className="w-6 h-6" /> : <Icon name="plus" className="w-5 h-5" />}
                                                         </button>
                                                     </div>
                                                     <div className="p-4 flex justify-between items-center">
@@ -224,7 +250,7 @@
                                     </div>
                                 ) : (
                                     <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-                                        <i data-lucide="lock" className="w-12 h-12 text-slate-100 mx-auto mb-4"></i>
+                                        <Icon name="lock" className="w-12 h-12 text-slate-100 mx-auto mb-4" />
                                         <h3 className="text-xl font-bold text-slate-300 tracking-[0.3em] uppercase">請先輸入班級密碼解鎖作品</h3>
                                     </div>
                                 )}
@@ -237,7 +263,7 @@
                         )}
                     </main>
 
-                    {/* Lightbox 圖片放大預覽功能 */}
+                    {/* 圖片預覽預覽 */}
                     {selectedImg && (
                         <div 
                             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm animate-fade-in" 
@@ -247,7 +273,7 @@
                                 className="absolute top-6 right-6 text-white/50 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
                                 onClick={() => setSelectedImg(null)}
                             >
-                                <i data-lucide="x" className="w-10 h-10"></i>
+                                <Icon name="x" className="w-10 h-10" />
                             </button>
                             
                             <div className="max-w-5xl w-full flex flex-col items-center animate-zoom-in" onClick={(e) => e.stopPropagation()}>
@@ -257,7 +283,6 @@
                                         className="max-h-[80vh] max-w-full rounded-2xl shadow-2xl border border-white/10" 
                                         onError={e => onImgError(e, 'preview')}
                                     />
-                                    {/* 關閉提示 */}
                                     <div className="mt-4 text-center">
                                         <h3 className="text-white text-2xl font-black mb-1">{selectedImg.name}</h3>
                                         <p className="text-white/50 text-sm">點擊背景或右上角按鈕關閉預覽</p>
