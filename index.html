@@ -3,15 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>校園海報作品投票系統</title>
-    <!-- 載入 Tailwind CSS -->
+    <title>校園作品投票系統 - 圖片放大版</title>
+    <!-- 載入外部支援庫 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 載入 React & Babel (讓瀏覽器能跑 React) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- 載入 Lucide 圖示 -->
+    <!-- 移除了造成錯誤的 @lucide/lab，保留標準的 lucide 庫 -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        .animate-zoom-in { animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes zoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
@@ -19,7 +26,9 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // --- 設定區 ---
+        // ==========================================
+        // --- 核心設定區 (請在此修改您的 Google 表單資訊) ---
+        // ==========================================
         const CONFIG = {
             GOOGLE_FORM_URL: "https://docs.google.com/forms/d/e/你的表單ID/viewform",
             ENTRY_ID_CLASS: "entry.111111111",
@@ -27,6 +36,7 @@
             GOOGLE_RESULTS_URL: "https://docs.google.com/spreadsheets/d/e/你的發佈ID/pubhtml?widget=true&headers=false"
         };
 
+        // 自動生成 701-709 班級資料
         const generateClassData = () => {
             const data = {};
             const alphabet = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -57,28 +67,33 @@
             const [isVerified, setIsVerified] = useState(false);
             const [selectedWorks, setSelectedWorks] = useState([]);
             const [hasVoted, setHasVoted] = useState(false);
-            const [selectedImg, setSelectedImg] = useState(null);
+            const [debugInfo, setDebugInfo] = useState({}); // 紀錄失效圖片的網址
+            const [selectedImg, setSelectedImg] = useState(null); // 控制放大預覽的狀態
 
             useEffect(() => {
                 const voted = localStorage.getItem('hasVotedImageVote');
                 if (voted) setHasVoted(true);
-            }, []);
+                // 初始化 Lucide 圖示
+                if (window.lucide) window.lucide.createIcons();
+            }, [activeTab, isVerified, selectedImg]);
 
             useEffect(() => {
                 setIsVerified(false);
                 setPasswordInput("");
                 setSelectedWorks([]);
+                setDebugInfo({});
             }, [userClass]);
 
             const handleVerify = () => {
                 if (userClass && classData[userClass].password === passwordInput) {
                     setIsVerified(true);
                 } else {
-                    alert("密碼錯誤！");
+                    alert("驗證失敗：密碼錯誤！");
                 }
             };
 
-            const toggleWork = (name) => {
+            const toggleWork = (e, name) => {
+                e.stopPropagation(); // 防止觸發圖片放大
                 if (selectedWorks.includes(name)) {
                     setSelectedWorks(selectedWorks.filter(w => w !== name));
                 } else if (selectedWorks.length < 2) {
@@ -96,96 +111,171 @@
                 window.open(url, '_blank');
             };
 
-            // 圖片修復邏輯
-            const onImgError = (e, name) => {
-                if (e.target.src.endsWith('.png')) {
-                    e.target.src = e.target.src.replace('.png', '.jpg');
+            // 核心偵錯邏輯：自動切換格式並記錄失敗網址
+            const onImgError = (e, imgId) => {
+                const currentSrc = e.target.src;
+                if (currentSrc.toLowerCase().endsWith('.png')) {
+                    e.target.src = currentSrc.replace('.png', '.jpg');
+                } else if (currentSrc.toLowerCase().endsWith('.jpg')) {
+                    e.target.src = currentSrc.replace('.jpg', '.jpeg');
                 } else {
-                    e.target.src = `https://via.placeholder.com/400x300?text=${name}`;
+                    // 如果所有格式都失敗
+                    setDebugInfo(prev => ({...prev, [imgId]: currentSrc}));
+                    e.target.style.display = 'none';
                 }
             };
 
             return (
                 <div className="min-h-screen flex flex-col">
-                    <header className="bg-white border-b p-4 sticky top-0 z-20 flex justify-between items-center shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <div className="bg-blue-600 p-1.5 rounded-lg text-white">
-                                <i data-lucide="thumbs-up"></i>
-                            </div>
-                            <span className="font-bold text-lg">作品投票系統</span>
+                    {/* Header */}
+                    <header className="bg-white border-b p-4 sticky top-0 z-30 flex justify-between items-center shadow-sm">
+                        <div className="flex items-center gap-2 text-indigo-600">
+                            <i data-lucide="image" className="w-6 h-6 font-bold"></i>
+                            <span className="font-black text-xl tracking-tight hidden sm:inline text-slate-800">校園作品投票系統</span>
                         </div>
-                        <nav className="flex bg-slate-100 p-1 rounded-lg">
-                            <button onClick={() => setActiveTab('vote')} className={`px-4 py-1.5 rounded-md text-sm font-bold ${activeTab === 'vote' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>投票</button>
-                            <button onClick={() => setActiveTab('results')} className={`px-4 py-1.5 rounded-md text-sm font-bold ${activeTab === 'results' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>結果</button>
+                        <nav className="flex bg-slate-100 p-1 rounded-xl">
+                            <button onClick={() => setActiveTab('vote')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'vote' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>投票介面</button>
+                            <button onClick={() => setActiveTab('results')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'results' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}>即時結果</button>
                         </nav>
                     </header>
 
-                    <main className="max-w-6xl mx-auto w-full p-4 flex-1">
+                    <main className="max-w-6xl mx-auto w-full p-6 flex-1">
                         {activeTab === 'vote' ? (
-                            <div className="space-y-6">
-                                <section className="bg-white p-6 rounded-2xl border shadow-sm grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div>
-                                        <label className="block text-sm font-bold mb-2">1. 選擇班級</label>
-                                        <select value={userClass} onChange={e => setUserClass(e.target.value)} className="w-full border p-3 rounded-xl bg-slate-50 font-bold outline-none">
-                                            <option value="">請選擇...</option>
+                            <div className="space-y-8 animate-fade-in">
+                                {/* 第一步：選擇班級與密碼 */}
+                                <section className="bg-white p-6 sm:p-8 rounded-[2rem] border shadow-sm grid grid-cols-1 md:grid-cols-3 gap-8">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">1. 選擇班級</label>
+                                        <select value={userClass} onChange={e => setUserClass(e.target.value)} className="w-full border-2 border-slate-100 p-4 rounded-2xl bg-slate-50 font-bold outline-none focus:border-indigo-500 transition-all cursor-pointer">
+                                            <option value="">請點選班級...</option>
                                             {Object.keys(classData).map(c => <option key={c} value={c}>{c} 班</option>)}
                                         </select>
                                     </div>
-                                    <div className={!userClass ? 'opacity-30 pointer-events-none' : ''}>
-                                        <label className="block text-sm font-bold mb-2">2. 班級密碼</label>
+                                    <div className={`space-y-2 ${!userClass ? 'opacity-20 pointer-events-none' : ''}`}>
+                                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">2. 班級密碼</label>
                                         <div className="flex gap-2">
-                                            <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} placeholder="輸入密碼" className="flex-1 border p-3 rounded-xl bg-slate-50 outline-none" disabled={isVerified} />
-                                            {!isVerified && <button onClick={handleVerify} className="bg-slate-800 text-white px-4 rounded-xl font-bold">驗證</button>}
+                                            <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleVerify()} placeholder="輸入 p+班級" className="flex-1 border-2 border-slate-100 p-4 rounded-2xl bg-slate-50 outline-none focus:border-indigo-500 transition-all font-bold" disabled={isVerified} />
+                                            {!isVerified && <button onClick={handleVerify} className="bg-slate-900 text-white px-6 rounded-2xl font-bold hover:bg-black transition-all">解鎖</button>}
                                         </div>
                                     </div>
                                     <div className="flex flex-col justify-end">
                                         {hasVoted ? (
-                                            <div className="bg-emerald-50 text-emerald-600 h-12 flex items-center justify-center rounded-xl font-bold border border-emerald-100">已完成投票</div>
+                                            <div className="bg-emerald-50 text-emerald-600 h-[64px] flex items-center justify-center rounded-2xl font-black border-2 border-emerald-100 italic tracking-wider">已完成投票紀錄</div>
                                         ) : (
-                                            <button onClick={submitVote} disabled={!isVerified || selectedWorks.length === 0} className="bg-blue-600 text-white h-12 rounded-xl font-bold disabled:bg-slate-100 disabled:text-slate-300">送出選票 ({selectedWorks.length}/2)</button>
+                                            <button onClick={submitVote} disabled={!isVerified || selectedWorks.length === 0} className="bg-indigo-600 text-white h-[64px] rounded-2xl font-black shadow-lg shadow-indigo-100 disabled:bg-slate-100 disabled:text-slate-300 disabled:shadow-none transition-all hover:bg-indigo-700 active:scale-95">確認送出選票 ({selectedWorks.length}/2)</button>
                                         )}
                                     </div>
                                 </section>
 
+                                {/* 第二步：作品呈現 */}
                                 {isVerified ? (
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-10">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6 pb-20 animate-fade-in">
                                         {classData[userClass].images.map(img => {
                                             const isSelected = selectedWorks.includes(img.name);
+                                            const errorUrl = debugInfo[img.id];
                                             return (
-                                                <div key={img.id} className={`bg-white rounded-2xl border-2 transition-all overflow-hidden ${isSelected ? 'border-blue-600 shadow-lg scale-[1.02]' : 'border-transparent shadow-sm'}`}>
-                                                    <div className="aspect-[4/3] relative">
-                                                        <img src={`./images/${userClass}/${img.filenameBase}.png`} className="w-full h-full object-cover" onError={e => onImgError(e, img.name)} />
-                                                        <button onClick={() => toggleWork(img.name)} className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center shadow-lg ${isSelected ? 'bg-blue-600 text-white' : 'bg-white/90 text-slate-300'}`}>
-                                                            {isSelected ? '✓' : ''}
+                                                <div key={img.id} className={`group bg-white rounded-[1.5rem] border-2 transition-all duration-300 overflow-hidden relative ${isSelected ? 'border-indigo-600 ring-8 ring-indigo-50 shadow-2xl scale-[1.03]' : 'border-slate-100 shadow-sm hover:shadow-md'}`}>
+                                                    <div 
+                                                        className="aspect-[4/3] relative bg-slate-200 overflow-hidden cursor-zoom-in"
+                                                        onClick={() => !errorUrl && setSelectedImg(img)}
+                                                    >
+                                                        <img 
+                                                            src={`./images/${userClass}/${img.filenameBase}.png`} 
+                                                            className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" 
+                                                            onError={e => onImgError(e, img.id)} 
+                                                        />
+                                                        {/* 放大圖示提示 */}
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                                            <i data-lucide="zoom-in" className="text-white opacity-0 group-hover:opacity-100 transition-opacity w-10 h-10"></i>
+                                                        </div>
+                                                        {/* 偵錯模式區塊 */}
+                                                        {errorUrl && (
+                                                            <div className="absolute inset-0 p-4 flex flex-col items-center justify-center text-center bg-red-50/90 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
+                                                                <i data-lucide="image-off" className="text-red-300 mb-1 w-8 h-8"></i>
+                                                                <p className="text-[10px] font-black text-red-500 leading-tight mb-2">無法讀取圖片</p>
+                                                                <button 
+                                                                    onClick={() => window.open(errorUrl)} 
+                                                                    className="text-[9px] bg-white border border-red-200 px-3 py-1.5 rounded-full text-red-500 font-bold hover:bg-red-50 shadow-sm"
+                                                                >
+                                                                    檢查路徑
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        {/* 選取勾選按鈕 */}
+                                                        <button 
+                                                            onClick={(e) => toggleWork(e, img.name)} 
+                                                            className={`absolute top-3 right-3 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg transition-all transform z-10 ${isSelected ? 'bg-indigo-600 text-white' : 'bg-white/90 text-slate-300 hover:text-indigo-600'}`}
+                                                        >
+                                                            {isSelected ? <i data-lucide="check" className="w-6 h-6"></i> : <i data-lucide="plus" className="w-5 h-5"></i>}
                                                         </button>
                                                     </div>
-                                                    <div className="p-3 text-center">
-                                                        <h3 className="font-bold">作品 {img.name}</h3>
-                                                        <button onClick={() => toggleWork(img.name)} className="text-xs mt-2 text-blue-600 font-bold">{isSelected ? '取消選取' : '選取'}</button>
+                                                    <div className="p-4 flex justify-between items-center">
+                                                        <div>
+                                                            <h3 className="font-black text-slate-800">作品 {img.name}</h3>
+                                                            <p className="text-[10px] text-slate-400 font-mono tracking-tighter">{img.id}</p>
+                                                        </div>
+                                                        <button onClick={(e) => toggleWork(e, img.name)} className={`text-xs font-black px-4 py-2 rounded-xl transition-colors ${isSelected ? 'text-red-500 bg-red-50' : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'}`}>
+                                                            {isSelected ? '取消' : '選取'}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             );
                                         })}
                                     </div>
                                 ) : (
-                                    <div className="py-20 text-center text-slate-300 font-bold">請先驗證班級密碼</div>
+                                    <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
+                                        <i data-lucide="lock" className="w-12 h-12 text-slate-100 mx-auto mb-4"></i>
+                                        <h3 className="text-xl font-bold text-slate-300 tracking-[0.3em] uppercase">請先輸入班級密碼解鎖作品</h3>
+                                    </div>
                                 )}
                             </div>
                         ) : (
-                            <div className="bg-white rounded-2xl shadow-sm border h-[70vh] overflow-hidden">
-                                <iframe src={CONFIG.GOOGLE_RESULTS_URL} className="w-full h-full border-0"></iframe>
+                            /* 結果頁面 */
+                            <div className="bg-white rounded-[2rem] shadow-sm border h-[75vh] overflow-hidden relative animate-fade-in">
+                                <iframe src={CONFIG.GOOGLE_RESULTS_URL} className="w-full h-full border-0">載入中...</iframe>
                             </div>
                         )}
                     </main>
+
+                    {/* Lightbox 圖片放大預覽功能 */}
+                    {selectedImg && (
+                        <div 
+                            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm animate-fade-in" 
+                            onClick={() => setSelectedImg(null)}
+                        >
+                            <button 
+                                className="absolute top-6 right-6 text-white/50 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
+                                onClick={() => setSelectedImg(null)}
+                            >
+                                <i data-lucide="x" className="w-10 h-10"></i>
+                            </button>
+                            
+                            <div className="max-w-5xl w-full flex flex-col items-center animate-zoom-in" onClick={(e) => e.stopPropagation()}>
+                                <div className="relative group">
+                                    <img 
+                                        src={`./images/${userClass}/${selectedImg.filenameBase}.png`} 
+                                        className="max-h-[80vh] max-w-full rounded-2xl shadow-2xl border border-white/10" 
+                                        onError={e => onImgError(e, 'preview')}
+                                    />
+                                    {/* 關閉提示 */}
+                                    <div className="mt-4 text-center">
+                                        <h3 className="text-white text-2xl font-black mb-1">{selectedImg.name}</h3>
+                                        <p className="text-white/50 text-sm">點擊背景或右上角按鈕關閉預覽</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <footer className="p-8 text-center text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">
+                        &copy; 2026 Campus Voting System &bull; Interactive POC
+                    </footer>
                 </div>
             );
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-
-        // 初始化圖示
-        setTimeout(() => lucide.createIcons(), 500);
     </script>
 </body>
 </html>
